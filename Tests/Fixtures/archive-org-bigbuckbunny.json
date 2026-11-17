@@ -1,0 +1,57 @@
+{
+ "title": "Big Buck Bunny",
+ "description": "Big Buck Bunny is a comedy about a well-tempered rabbit \"Big Buck\", who finds his day spoiled by the rude actions of the forest bullies, three rodents. In the typical 1950ies cartoon tradition Big Buc",
+ "uploader": "jake@archive.org",
+ "id": "BigBuckBunny_124",
+ "webpage_url": "https://archive.org/details/BigBuckBunny_124",
+ "formats": [
+  {
+   "width": 533,
+   "height": 300,
+   "filesize": 46935223,
+   "protocol": "https",
+   "format_note": "derivative",
+   "ext": "ogv",
+   "vbr": null,
+   "abr": null,
+   "tbr": null,
+   "dynamic_range": "SDR",
+   "format_id": "0"
+  },
+  {
+   "width": 640,
+   "height": 360,
+   "filesize": 61878609,
+   "protocol": "https",
+   "format_note": "derivative",
+   "ext": "mp4",
+   "vbr": null,
+   "abr": null,
+   "tbr": null,
+   "dynamic_range": "SDR",
+   "format_id": "1"
+  },
+  {
+   "width": 1280,
+   "height": 720,
+   "filesize": 332243668,
+   "protocol": "https",
+   "format_note": "derivative",
+   "ext": "avi",
+   "vbr": null,
+   "abr": null,
+   "tbr": null,
+   "dynamic_range": "SDR",
+   "format_id": "2"
+  }
+ ],
+ "subtitles": {},
+ "duration": 596.46,
+ "original_url": "https://archive.org/details/BigBuckBunny_124",
+ "webpage_url_domain": "archive.org",
+ "extractor_key": "ArchiveOrg",
+ "thumbnail": "https://archive.org/download/BigBuckBunny_124/BigBuckBunny_124.thumbs/Content/big_buck_bunny_720p_surround_000585.jpg",
+ "fulltitle": "Big Buck Bunny",
+ "upload_date": "20110701",
+ "_type": "video"
+}

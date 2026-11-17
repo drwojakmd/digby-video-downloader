@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Download with Digby",
+  "version": "1.0",
+  "description": "Opens the page you're on in Digby Video Downloader, so you can choose what to download. Collects nothing and sends nothing anywhere else.",
+  "permissions": ["contextMenus", "activeTab"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "Download with Digby",
+    "default_icon": { "16": "icon16.png", "32": "icon32.png", "48": "icon48.png", "128": "icon128.png" }
+  },
+  "icons": { "16": "icon16.png", "32": "icon32.png", "48": "icon48.png", "128": "icon128.png" }
+}
