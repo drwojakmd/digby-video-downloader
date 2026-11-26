@@ -50,6 +50,8 @@ import DigbyDownloadCore
     var destination: URL?
     /// Waits for the overnight hours before starting.
     var overnight = false
+    /// Compress with Digby Video Compressor once downloaded (copied from Settings when it started).
+    var compressAfter: CompressAfter?
 
     init(title: String, site: String, summary: String, size: SizeEstimate? = nil, state: State = .waiting, children: [QueueItem] = []) {
         self.title = title; self.site = site; self.summary = summary; self.size = size; self.state = state; self.children = children

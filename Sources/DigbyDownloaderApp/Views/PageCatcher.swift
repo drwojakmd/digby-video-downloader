@@ -233,7 +233,6 @@ struct PageCatcherView: View {
     @Environment(AppModel.self) private var model
     @Bindable var catcher: PageCatcher
     var close: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The caught videos you've ticked.
     @State private var selected: Set<String> = []
 
@@ -319,12 +318,10 @@ struct PageCatcherView: View {
 
     var playStep: some View {
         HStack(spacing: 18) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Brand.skyGradient)
-                LandfallView(progress: 1, drift: !reduceMotion, color: .white, pointColor: Brand.dawnFixed, count: 5)
-                    .padding(.horizontal, 8).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .frame(width: 92, height: 58)
+            Image(systemName: "play.fill")
+                .font(.system(size: 18, weight: .semibold)).foregroundStyle(Brand.accent)
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(Brand.accent.opacity(0.12)))
             VStack(alignment: .leading, spacing: 3) {
                 Text("Play the video").font(TypeStyle.headline)
                 Text("Press play on the page above. Digby catches the video as soon as it starts and lists it here. If the page asks you to sign in or prove you’re human, do that first: this window remembers it next time.")

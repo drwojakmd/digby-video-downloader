@@ -36,6 +36,8 @@ struct AppSettings: Codable, Equatable {
     /// Playing a page out of sight to catch its video, answered once per site (`SiteKey`): true = allowed,
     /// false = don't offer again. A site not listed hasn't been asked.
     var pageCatchSites: [String: Bool]? = nil
+    /// Hand each finished video to Digby Video Compressor (nil: never chosen, so off).
+    var compressAfter: CompressAfter? = nil
 
     static let key = "DigbyDownloader.settings.v1"
     static var persistent: Bool { ProcessInfo.processInfo.environment["DIGBY_DL_RENDER"] == nil }
@@ -64,6 +66,10 @@ struct PendingDownload: Codable {
     var workID: String
     var paused: Bool
     var folder: String? = nil       // a project's folder, when it had one
+    // Added 2026-11 (absent in older files), for the summary shown on reopening:
+    var stoppedNote: String? = nil  // "Was downloading" / "Was waiting its turn"; nil = paused by the user
+    var failure: String? = nil      // the plain reason, when it had failed
+    var compressAfter: CompressAfter? = nil
 
     static var file: URL { Paths.home.appendingPathComponent("Unfinished downloads.json") }
     static func load() -> [PendingDownload] {
@@ -73,6 +79,22 @@ struct PendingDownload: Codable {
     static func save(_ list: [PendingDownload]) {
         guard AppSettings.persistent else { return }
         if list.isEmpty { try? FileManager.default.removeItem(at: file); return }
+        try? Paths.ensure(Paths.home)
+        try? JSONEncoder().encode(list).write(to: file, options: .atomic)
+    }
+}
+
+/// Downloads that finished or were cancelled in the same session as unfinished ones, so the reopen
+/// summary can list them too. Written with "Unfinished downloads.json" and removed with it.
+enum LastSessionLog {
+    static var file: URL { Paths.home.appendingPathComponent("Last session.json") }
+    static func load() -> [LastSessionItem] {
+        guard AppSettings.persistent, let d = try? Data(contentsOf: file) else { return [] }
+        return (try? JSONDecoder().decode([LastSessionItem].self, from: d)) ?? []
+    }
+    static func save(_ list: [LastSessionItem], unfinished: Bool) {
+        guard AppSettings.persistent else { return }
+        if !unfinished || list.isEmpty { try? FileManager.default.removeItem(at: file); return }
         try? Paths.ensure(Paths.home)
         try? JSONEncoder().encode(list).write(to: file, options: .atomic)
     }

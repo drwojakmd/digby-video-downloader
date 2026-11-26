@@ -150,9 +150,13 @@ struct EngineStatus: Identifiable, Hashable {
     var urlText = ""
     var queue: [QueueItem] = []
     var history: [HistoryEntry] = []
+    /// Bumped when an entry changes in place (compression results), so lists read from the database refresh.
+    var historyVersion = 0
     let historyStore: HistoryStore? = AppSettings.persistent ? (try? HistoryStore()) : nil
     /// Downloads that hadn't finished when Digby last quit.
     var resumeOffer: [PendingDownload] = []
+    /// The summary shown once after reopening, when downloads were left unfinished (row ids are work IDs).
+    var lastSession: LastSessionReport? = nil
     var engines: [EngineStatus] = []
     var engineBanner: String? = nil
     var enginesReady = false
@@ -213,7 +217,20 @@ struct EngineStatus: Identifiable, Hashable {
         AppModel.shared = self
         if ProcessInfo.processInfo.environment["DIGBY_DL_RENDER"] != nil { MockData.populate(self); return }
         history = historyStore?.entries() ?? []
+        if AppSettings.persistent {
+            // Results from Digby Video Compressor for videos sent there (a folder listing every few seconds).
+            Task { @MainActor [weak self] in
+                while true {
+                    guard let self else { return }
+                    self.applyCompressionResults()
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                }
+            }
+        }
         resumeOffer = PendingDownload.load()
+        // Engines a force quit or crash left running would keep writing into the partial data.
+        if AppSettings.persistent, !resumeOffer.isEmpty { Leftovers.stopOrphans(under: Paths.tools) }
+        lastSession = Self.lastSessionReport(resumeOffer, earlier: LastSessionLog.load())
         // Work folders from a crash, or from pauses abandoned for two weeks, are removed.
         let keep = Set(resumeOffer.map(\.workID))
         // (one level down too: downloads sorted into month, day, site or channel folders)
@@ -262,7 +279,29 @@ struct EngineStatus: Identifiable, Hashable {
     func saveQueue() {
         let list = pendingList()
         lastSavedQueue = try? JSONEncoder().encode(list)
+        persist(list)
+    }
+    private func persist(_ list: [PendingDownload]) {
         PendingDownload.save(list)
+        let ended: [LastSessionItem] = leaves.compactMap { i in
+            switch i.state {
+            case .done: return LastSessionItem(id: i.workID, name: i.title, outcome: .finished)
+            case .cancelled: return LastSessionItem(id: i.workID, name: i.title, outcome: .cancelled)
+            default: return nil
+            }
+        }
+        LastSessionLog.save(ended + (lastSession?.items.filter { $0.outcome == .finished || $0.outcome == .cancelled } ?? []), unfinished: !list.isEmpty)
+    }
+
+    /// What the last session left: finished and cancelled ones (from the log), stopped and failed ones (still offered).
+    static func lastSessionReport(_ offer: [PendingDownload], earlier: [LastSessionItem]) -> LastSessionReport? {
+        guard !offer.isEmpty else { return nil }
+        let rows = offer.map { p in
+            p.failure.map { LastSessionItem(id: p.workID, name: p.title, outcome: .failed, reason: $0, canResume: true) }
+                ?? LastSessionItem(id: p.workID, name: p.title, outcome: .stopped, reason: p.stoppedNote ?? "Paused", canResume: true)
+        }
+        let ids = Set(rows.map(\.id))
+        return LastSessionReport(items: earlier.filter { !ids.contains($0.id) } + rows, noun: "download")
     }
     private var lastSavedQueue: Data?
     /// The periodic save: writes only when something changed.
@@ -270,7 +309,7 @@ struct EngineStatus: Identifiable, Hashable {
         let list = pendingList()
         guard let d = try? JSONEncoder().encode(list), d != lastSavedQueue else { return }
         lastSavedQueue = d
-        PendingDownload.save(list)
+        persist(list)
     }
     private func pendingList() -> [PendingDownload] {
         let current: [PendingDownload] = leaves.compactMap { item in
@@ -285,27 +324,54 @@ struct EngineStatus: Identifiable, Hashable {
             var paused = false
             if case .paused = item.state { paused = true }
             if item.isActive { paused = true }        // stopped by quitting: its partial data is kept
+            var failure: String? = nil
+            if case .failed(let why) = item.state { failure = why }
+            let note: String? = item.isActive ? "Was downloading" : item.state == .waiting ? "Was waiting its turn" : nil
             return PendingDownload(url: url, title: item.title, choices: choices, playlist: playlist, index: index, workID: item.workID, paused: paused,
-                                   folder: item.destination?.path)
+                                   folder: item.destination?.path, stoppedNote: note, failure: failure, compressAfter: item.compressAfter)
         }
         let ids = Set(current.map(\.workID))
         return current + resumeOffer.filter { !ids.contains($0.workID) }
     }
-    func resumeUnfinished() {
-        for p in resumeOffer {
+    /// Resume All (`ids` nil: everything stopped by quitting), or the rows given (Resume / Try Again).
+    func resumeUnfinished(_ ids: Set<String>? = nil) {
+        let stopped = Set(lastSession?.resumable.map(\.id) ?? resumeOffer.filter { $0.failure == nil }.map(\.workID))
+        let chosen = resumeOffer.filter { ids?.contains($0.workID) ?? stopped.contains($0.workID) }
+        for p in chosen {
             let item = QueueItem(title: p.title, site: p.url.host?.replacingOccurrences(of: "www.", with: "") ?? "", summary: "Continuing")
             item.workID = p.workID
             item.destination = p.folder.map { URL(fileURLWithPath: $0, isDirectory: true) }
             item.work = .unplanned(url: p.url, choices: p.choices, playlist: p.playlist, index: p.index)
+            item.compressAfter = p.compressAfter
             queue.append(item)
         }
-        resumeOffer = []; PendingDownload.save([])
-        section = .queue
+        let taken = Set(chosen.map(\.workID))
+        resumeOffer.removeAll { taken.contains($0.workID) }
+        lastSession?.items.removeAll { taken.contains($0.id) }
+        closeLastSessionIfDone()
+        saveQueue()
+        if !chosen.isEmpty { section = .queue }
         pump()
     }
+    /// Remove one unfinished download: forgotten, and its partial data deleted.
+    func removeUnfinished(_ id: String) {
+        guard let p = resumeOffer.first(where: { $0.workID == id }) else { return }
+        resumeOffer.removeAll { $0.workID == id }
+        lastSession?.items.removeAll { $0.id == id }
+        Leftovers.removeWork(ids: [id], in: workFolders([p]))
+        closeLastSessionIfDone()
+        saveQueue()
+    }
+    /// Dismiss: forget what wasn't resumed and delete its partial data (only theirs: downloads running now keep theirs).
     func discardUnfinished() {
-        resumeOffer = []; PendingDownload.save([])
-        for f in [videoFolder, audioFolder] { Downloader.sweep(f, keeping: [], olderThan: 0) }
+        let offer = resumeOffer
+        resumeOffer = []; lastSession = nil
+        Leftovers.removeWork(ids: Set(offer.map(\.workID)), in: workFolders(offer))
+        saveQueue()
+    }
+    private func closeLastSessionIfDone() { if lastSession?.worthShowing != true { lastSession = nil } }
+    private func workFolders(_ list: [PendingDownload]) -> [URL] {
+        [videoFolder, audioFolder] + list.compactMap { $0.folder.map { URL(fileURLWithPath: $0, isDirectory: true) } }
     }
 
     // MARK: Profiles
@@ -708,6 +774,7 @@ struct EngineStatus: Identifiable, Hashable {
         item.details = DownloadDetails.make(catalogue: a.catalogue, choices: a.choices, plan: plan)
         item.destination = project(a.projectID)?.folderURL
         item.overnight = a.overnight
+        item.compressAfter = plan.kind == .audioOnly ? nil : compressAfterForNew
         var name = FileNamer.render(nameTemplate, media: m, plan: plan)
         if let clip = plan.clip { name += " (part \(clip.fileLabel))" }
         var req = DownloadRequest(media: m, plan: plan, folder: folder(for: plan, destination: item.destination, media: m), fileName: name)
@@ -731,6 +798,7 @@ struct EngineStatus: Identifiable, Hashable {
             c.work = .unplanned(url: e.url, choices: d.choices, playlist: d.collection.title, index: i + 1)
             c.destination = project(d.projectID)?.folderURL
             c.overnight = d.overnight
+            c.compressAfter = d.choices.kind == .audioOnly ? nil : compressAfterForNew
             return c
         }
         queue.insert(group, at: 0)
@@ -984,6 +1052,7 @@ struct EngineStatus: Identifiable, Hashable {
             draft(showing: item)?.state = .completed(item)
             recordAttempt(req.media.webpageURL, failure: nil)
             Notifier.finished(item.title, ok: true)
+            if let c = item.compressAfter, req.plan.kind != .audioOnly { compressWithDigby(out.file, using: c) }
             finished(item)
         } catch let f as Failure {
             if f.kind == .cancelled { item.state = item.token.isPaused ? .paused(item.fraction ?? 0) : .cancelled; return }
@@ -1097,14 +1166,79 @@ struct EngineStatus: Identifiable, Hashable {
     func reveal(_ url: URL) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
 
 
-    /// Hands a finished video to Digby Video Compressor through its existing "open document" support.
-    func compressWithDigby(_ file: URL) {
+    /// The compress choice in Settings (also used by the Compress buttons when it's switched off).
+    var compressAfter: CompressAfter {
+        get { settings.compressAfter ?? CompressAfter() }
+        set { settings.compressAfter = newValue }
+    }
+    /// What a download starting now should do when it finishes.
+    var compressAfterForNew: CompressAfter? { compressAfter.on && compressorInstalled ? compressAfter : nil }
+
+    /// Hands a finished video to Digby Video Compressor through its "open document" support.
+    /// - using: also leave the note that makes it start straight away with these choices (in the background).
+    ///   nil just opens it there, as before, to choose the settings yourself.
+    func compressWithDigby(_ file: URL, using c: CompressAfter? = nil) {
         let ws = NSWorkspace.shared
         // When it isn't installed the button explains that instead (no website link until the
         // Digby family has a neutral product domain: the current one carries a personal account name).
         guard let app = ws.urlForApplication(withBundleIdentifier: "app.digbyvideo.compressor") else { return }
-        ws.open([file], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+        let config = NSWorkspace.OpenConfiguration()
+        if let c, CompressHandoff(file: file, using: c).write() {
+            config.activates = false
+            markSent(file, c)
+        }
+        ws.open([file], withApplicationAt: app, configuration: config)
     }
+
+    /// The download's History entry (by its file, or by the file it was before the Compressor replaced it).
+    private func historyIndex(forFile path: String) -> Int? {
+        history.firstIndex { e in
+            e.file?.standardizedFileURL.path == path || e.details?.compression?.originalFile.standardizedFileURL.path == path
+        }
+    }
+
+    private func saveHistory(_ e: HistoryEntry, at i: Int) {
+        history[i] = e
+        historyStore?.add(e)      // same id: replaces the saved entry
+        historyVersion += 1
+    }
+
+    /// Shows "Waiting for Compressor" in Downloaded until it reports back.
+    private func markSent(_ file: URL, _ c: CompressAfter) {
+        guard let i = historyIndex(forFile: file.standardizedFileURL.path), var d = history[i].details else { return }
+        var e = history[i]
+        d.compression = CompressionRecord(state: .sent, setting: c.settingLabel, originalFile: file.standardizedFileURL, originalBytes: e.bytes)
+        e.details = d
+        saveHistory(e, at: i)
+    }
+
+    /// Reads Digby Video Compressor's reports and records them with the downloads they're about. When it replaced
+    /// the original, the entry now points at the smaller file. Used reports are deleted; ones for downloads not
+    /// in the list go after a week.
+    func applyCompressionResults() {
+        for (url, n) in CompressResultNote.readAll() {
+            var rec = n.record
+            guard let i = historyIndex(forFile: URL(fileURLWithPath: n.file).standardizedFileURL.path), var d = history[i].details else {
+                if Date().timeIntervalSince(n.date ?? .distantPast) > 7 * 86_400 { try? FileManager.default.removeItem(at: url) }
+                continue
+            }
+            var e = history[i]
+            if let old = d.compression {
+                rec.setting = old.setting                         // keep this app's own name for it ("Light")
+                if rec.originalBytes == nil { rec.originalBytes = old.originalBytes }
+            }
+            if d.compression != rec {
+                d.compression = rec
+                e.details = d
+                if rec.state == .done, rec.originalTrashed, let out = rec.output { e.file = out }
+                saveHistory(e, at: i)
+            }
+            if rec.isFinal { try? FileManager.default.removeItem(at: url) }
+        }
+    }
+
+    /// Space saved by compressing downloads, across what's listed.
+    var compressionSavedBytes: Int64 { history.compactMap { $0.details?.compression?.savedBytes }.reduce(0, +) }
     var compressorInstalled: Bool { NSWorkspace.shared.urlForApplication(withBundleIdentifier: "app.digbyvideo.compressor") != nil }
 }
 

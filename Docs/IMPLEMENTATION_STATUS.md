@@ -218,3 +218,30 @@ Tests: 366 checks pass. DMG: `build/DigbyVideoDownloader-<version>.dmg` (4.5 MB;
 * Unsigned (ad-hoc) app: first launch needs right-click → Open. Developer ID signing needs an Apple Developer account.
 * No Xcode: no Safari extension yet; tests are an executable rather than XCTest.
 * My window snapshots can't capture the vibrant sidebar (renders fine on its own).
+
+## Compress after downloading (branch `updates-2026-11`, 2026-11-26, not committed)
+* "After downloading" row (single video and playlist screens): Keep as Downloaded / Compress with Digby; How small
+  (Light, Balanced, Small, Smallest, Fit a Size in MB, Compressor's Settings); move the big download to the Trash once the
+  smaller copy is made and checked (on by default). Remembered in `AppSettings.compressAfter`; copied onto each download
+  when it starts. Audio-only downloads are never sent.
+* Hand-off: `CompressHandoff` writes a JSON note to `~/Library/Application Support/Digby Video Compressor/Handoff/`, then
+  opens the file in the Compressor without bringing it forward. The Compressor (`Handoff.swift`) uses a matching note under 10
+  minutes old once, starts at once, uses `OriginalReplacer` when asked, and never changes its own saved settings for it.
+  Opening a video any other way is unchanged. Override the folder with `DIGBY_HANDOFF_DIR` for tests.
+* Downloaded: a Compress icon on each video row; the ⋯ menu has Compress Now and Open in Digby Compressor.
+* Verified: both build, 366 + 87 checks pass, note round trip tested in isolation. Not yet tried in the real apps.
+* Known: when the Compressor replaces a .webm/.mkv download, the smaller file is .mp4, so that History row shows "File moved".
+* Size estimates (2026-11-26): each How small option shows "≈ low–high MB", a share of the download size by the site's
+  codec (`CompressAfter.Size.estimate`). The shares are judgment, not measured on real downloads; tune them from user reports.
+* Compression history (2026-11-26): the Compressor writes `HandoffResult` notes (compressing → done/skipped/failed/cancelled)
+  to `…/Digby Video Compressor/Handoff/Results/`, only for videos the Downloader sent. The Downloader reads them every 3 s
+  (`applyCompressionResults`), stores a `CompressionRecord` in `DownloadDetails.compression` (no schema change) and points
+  the entry at the smaller file when the original was trashed. UI: status chip and "X (was Y)" in Downloaded, a Compressed
+  filter, total saved, and a "Made smaller" card in Details. Round trip tested in isolation; not yet tried in the real apps.
+
+## Resume after quit (2026-11-26, uncommitted on updates-2026-11)
+* Unfinished downloads were already saved on quit and every 4 s (`Unfinished downloads.json`), so a force quit, crash or restart loses nothing. New: each entry also records why it stopped (`stoppedNote`), a failure's plain reason (`failure`) and its "Compress with Digby" choice (`compressAfter`, which was lost on resume before). Downloads that finished or were cancelled in the same session go to `Last session.json` (removed once nothing is unfinished).
+* On reopen, a summary strip (`ResumeBanner` in `Views/ContentView.swift`) says what finished, what quitting stopped, what failed (with the reason) and what was cancelled, with Resume All, Details (per-row Resume / Try Again / Remove) and Dismiss.
+* Fixes: Dismiss (was "Discard") used to delete every `.digby-download-*` work folder, including those of downloads running at that moment, and missed project folders. It now removes only the dismissed downloads' folders (`Leftovers.removeWork`). Engines left running by a force quit (orphans from the `Tools` folder) are stopped at launch before resuming (`Leftovers.stopOrphans`).
+* Code: `DigbyDownloadCore/Support/LastSession.swift` (new), `App/AppSettings.swift`, `App/AppModel.swift` (Unfinished downloads section), `Views/ContentView.swift`, render state `resume` in `App/DebugRender.swift`. 376 checks pass (10 new).
+* Undo: delete `LastSession.swift`, then `git diff` those files and revert the hunks named above (other sessions' uncommitted work is in the same files). Old `Unfinished downloads.json` files still load, and the new fields are optional.

@@ -2,21 +2,13 @@ import SwiftUI
 import DigbyDesign
 import DigbyDownloadCore
 
-/// Downloading: the streaks draw down toward the landing point as the file arrives.
+/// Downloading: title, percentage and one progress line. Nothing decorative.
 struct DownloadingCard: View {
     @Environment(AppModel.self) private var model
     var item: QueueItem
 
     var body: some View {
         Card(padding: 20) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Brand.skyGradient)
-                LandfallView(progress: item.fraction ?? 0.1, drift: false, color: .white, pointColor: Brand.dawnFixed)
-                    .padding(.horizontal, 40)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .animation(.linear(duration: 0.25), value: item.fraction)
-            }
-            .frame(height: 150)
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.title).font(TypeStyle.headline).lineLimit(1)
@@ -63,12 +55,10 @@ struct CompletedCard: View {
     var body: some View {
         Card(padding: 20) {
             HStack(alignment: .center, spacing: 16) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Brand.skyGradient)
-                    LandfallView(progress: 1, settled: true, color: .white, pointColor: Brand.dawnFixed, count: 5)
-                        .padding(.horizontal, 10).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .frame(width: 88, height: 88)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 22, weight: .semibold)).foregroundStyle(Brand.good)
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(Brand.good.opacity(0.12)))
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Downloaded").font(TypeStyle.title)
                     Text(item.title).foregroundStyle(.secondary).lineLimit(2)
@@ -92,7 +82,12 @@ struct CompletedCard: View {
                     Spacer()
                     Button("Download Another") { model.reset() }.buttonStyle(QuietButtonStyle(tint: .secondary))
                 }
-                CompressWithDigby(file: url)
+                if let c = item.compressAfter {
+                    InfoRow("Sent to Digby Video Compressor, which is making it smaller now: \(c.summary.lowercased()).",
+                            systemImage: "rectangle.compress.vertical", tint: Brand.accent)
+                } else {
+                    CompressWithDigby(file: url)
+                }
             }
         }
     }
@@ -108,12 +103,15 @@ struct CompressWithDigby: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Make it smaller").font(.callout.weight(.semibold))
                 Text(model.compressorInstalled
-                     ? "Opens this video in Digby Video Compressor, which can shrink it a lot with no visible loss. This download stays as it is."
+                     ? "Digby Video Compressor starts on it straight away: \(model.compressAfter.summary.lowercased()). Change this under “After downloading” for your next link."
                      : "Digby Video Compressor can shrink videos a lot with no visible loss. Install it to use this.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Button("Compress with Digby") { model.compressWithDigby(file) }
+            Button("Open in Compressor") { model.compressWithDigby(file) }
+                .buttonStyle(QuietButtonStyle(tint: .secondary)).disabled(!model.compressorInstalled)
+                .help("Opens it in Digby Video Compressor without starting, to choose the settings there")
+            Button("Compress") { model.compressWithDigby(file, using: model.compressAfter) }
                 .buttonStyle(QuietButtonStyle()).disabled(!model.compressorInstalled)
         }
         .padding(12)
@@ -333,6 +331,7 @@ struct CollectionView: View {
                             PillButton(k.name, detail: k.plainLabel, selected: draft.choices.container == k) { draft.choices.container = k }
                         }
                     }
+                    CompressAfterRow()
                 }
                 HStack(spacing: 10) {
                     SaveToMenu(projectID: $draft.projectID, audio: draft.choices.kind == .audioOnly) {

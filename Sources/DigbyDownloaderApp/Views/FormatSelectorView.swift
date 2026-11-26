@@ -18,6 +18,11 @@ struct ReadyView: View {
                     InfoRow(note, systemImage: "wand.and.stars", tint: Brand.accent)
                 }
                 PlanSummary(result: result, catalogue: analysis.catalogue) { analysis.choices = $0; analysis.autoNote = nil }
+                if analysis.choices.kind != .audioOnly {
+                    Divider().padding(.vertical, 2)
+                    CompressAfterRow(downloadBytes: result.plan?.size?.bytes,
+                                     codec: result.plan.flatMap { $0.videoConverted ? .avc : $0.video?.videoCodec })
+                }
                 DownloadBar(analysis: analysis, result: result)
             }
             if analysis.advanced {

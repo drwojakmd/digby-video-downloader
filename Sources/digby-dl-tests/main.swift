@@ -674,5 +674,41 @@ do {
     check(key("https://evil-youtube.com/") == "evil-youtube.com", "site: look-alikes stay separate")
 }
 
+// ---- resume after quit: the reopen summary and leftovers of a killed run
+do {
+    let r = LastSessionReport(items: [
+        LastSessionItem(id: "a", name: "A", outcome: .finished),
+        LastSessionItem(id: "b", name: "B", outcome: .stopped, reason: "Was downloading", canResume: true),
+        LastSessionItem(id: "c", name: "C", outcome: .failed, reason: "The site refused the connection", canResume: true),
+        LastSessionItem(id: "d", name: "D", outcome: .cancelled)], noun: "download")
+    check(r.headline == "Digby closed before 1 download was done.", "resume: headline (\(r.headline))")
+    check(r.tally == "1 finished · 1 stopped · 1 failed · 1 cancelled", "resume: tally (\(r.tally))")
+    check(r.resumable.map(\.id) == ["b"], "resume: Resume All leaves failed ones for Try Again")
+    check(!LastSessionReport(items: [LastSessionItem(id: "a", name: "A", outcome: .finished)], noun: "download").worthShowing, "resume: nothing undone, no summary")
+    check(LastSessionReport(items: [LastSessionItem(id: "a", name: "A", outcome: .failed)], noun: "download").headline == "1 download didn’t finish last time.",
+          "resume: failure-only headline")
+    let enc = try? JSONEncoder().encode(r.items)
+    check(enc.flatMap { try? JSONDecoder().decode([LastSessionItem].self, from: $0) } == r.items, "resume: summary rows survive saving")
+
+    let ps = """
+      201     1 /Users/x/Library/Application Support/Digby Video Downloader/Tools/yt-dlp/2026.11.01/yt-dlp
+      202   201 /Users/x/Library/Application Support/Digby Video Downloader/Tools/ffmpeg/7.1/ffmpeg
+      203     1 /opt/homebrew/bin/yt-dlp
+      204     1 /Users/x/Library/Application Support/Digby Video Downloader/Tools-old/yt-dlp
+    """
+    check(Leftovers.orphanPIDs(psOutput: ps, under: "/Users/x/Library/Application Support/Digby Video Downloader/Tools") == [201],
+          "resume: only orphaned engines from Digby's own folder are stopped")
+
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("digby-dl-work-\(UUID().uuidString)")
+    let sub = root.appendingPathComponent("2026-11", isDirectory: true)
+    let fm = FileManager.default
+    for d in [root.appendingPathComponent(".digby-download-gone"), sub.appendingPathComponent(".digby-download-gone2"),
+              root.appendingPathComponent(".digby-download-running")] { try? fm.createDirectory(at: d, withIntermediateDirectories: true) }
+    check(Leftovers.removeWork(ids: ["gone", "gone2"], in: [root]) == 2, "resume: removed downloads lose their partial data (also one folder down)")
+    check(fm.fileExists(atPath: root.appendingPathComponent(".digby-download-running").path), "resume: a download running now keeps its partial data")
+    check(Leftovers.removeWork(ids: [], in: [root]) == 0, "resume: nothing named, nothing removed")
+    try? fm.removeItem(at: root)
+}
+
 print(failures == 0 ? "✓ all \(passed) checks passed" : "\(failures) failed, \(passed) passed")
 exit(failures == 0 ? 0 : 1)

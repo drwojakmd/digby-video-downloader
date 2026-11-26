@@ -58,14 +58,15 @@ struct ComposerContent: View {
 /// The hero: one field, one action.
 struct EmptyComposer: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var dropTargeted: Bool
 
     var body: some View {
-        VStack(spacing: 24) {
-            SkyPanel(settled: dropTargeted, drift: !reduceMotion, pointColor: dropTargeted ? Brand.dawnFixed : .white)
-                .frame(maxWidth: 580).frame(height: 170)
-                .animation(.easeInOut(duration: 0.5), value: dropTargeted)
+        // Minimal by design: the app icon, one headline, the link field. (`SkyPanel` and `LandfallView` in
+        // DigbyDesign/Landfall.swift are kept, unused, and can be put back here.)
+        VStack(spacing: 22) {
+            AppIconMark(size: 76)
+                .scaleEffect(dropTargeted ? 1.05 : 1)
+                .animation(.easeInOut(duration: 0.3), value: dropTargeted)
             VStack(spacing: 8) {
                 Text(dropTargeted ? "Drop to download" : "Paste a link to begin")
                     .font(TypeStyle.display).kerning(-0.3)
@@ -86,26 +87,21 @@ struct EmptyComposer: View {
                 .buttonStyle(.plain)
                 .help("Digby noticed a link on your clipboard. It never downloads anything until you ask.")
             }
-            HStack(spacing: 22) {
-                Feature(symbol: "text.bubble", text: "Explains every choice")
-                Feature(symbol: "equal.circle", text: "Never lowers quality silently")
-                Feature(symbol: "arrow.triangle.2.circlepath", text: "Keeps itself up to date")
-                Feature(symbol: "rectangle.compress.vertical", text: "Works with Digby Compressor")
-            }
-            .padding(.top, 6)
+            Text("Explains every choice · Never lowers quality silently · Keeps itself up to date · Works with Digby Compressor")
+                .font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
+                .padding(.top, 6)
         }
         .padding(36)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
 
-    struct Feature: View {
-        var symbol: String; var text: String
-        var body: some View {
-            HStack(spacing: 6) {
-                Image(systemName: symbol).foregroundStyle(Brand.accent)
-                Text(text).font(.callout).foregroundStyle(.secondary)
-            }
-        }
+/// The app's own icon, as a quiet brand mark (home screen and About).
+struct AppIconMark: View {
+    var size: CGFloat
+    var body: some View {
+        Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high)
+            .frame(width: size, height: size).accessibilityHidden(true)
     }
 }
 
@@ -173,7 +169,6 @@ struct AnalysingView: View {
     @Environment(AppModel.self) private var model
     var url: URL
     var step: Int
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var steps: [String] {
         ["Opening the page", "Listing every format the site offers", "Checking sound tracks and subtitles"]
             + (step >= 3 ? ["Playing the page to find the video (the site isn’t readable directly)"] : [])
@@ -181,15 +176,12 @@ struct AnalysingView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SkyPanel(drift: !reduceMotion, pointColor: nil) {
-                VStack(spacing: 6) {
-                    Text("Reading \(url.host?.replacingOccurrences(of: "www.", with: "") ?? "the page")…")
-                        .font(.system(size: 20, weight: .light)).foregroundStyle(.white)
-                    Text("Nothing is downloaded yet").font(.callout).foregroundStyle(.white.opacity(0.75))
-                }
-                .offset(y: -18)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Reading \(url.host?.replacingOccurrences(of: "www.", with: "") ?? "the page")…")
+                    .font(.system(size: 22, weight: .light)).lineLimit(1).truncationMode(.middle)
+                Text("Nothing is downloaded yet").font(.callout).foregroundStyle(.secondary)
             }
-            .frame(height: 150)
+            .padding(.top, 4)
             Card {
                 ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
                     HStack(spacing: 10) {

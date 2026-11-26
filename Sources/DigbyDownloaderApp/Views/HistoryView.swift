@@ -14,15 +14,17 @@ struct HistoryView: View {
     @State private var quickLook: URL?
     @FocusState private var listFocused: Bool
 
-    enum Filter: String, CaseIterable { case all = "All", video = "Video", audio = "Audio", failed = "Didn’t work" }
+    enum Filter: String, CaseIterable { case all = "All", video = "Video", audio = "Audio", failed = "Didn’t work", compressed = "Compressed" }
 
     var records: [HistoryEntry] {
         _ = model.history.count      // refresh when history changes
+        _ = model.historyVersion
         let all: [HistoryEntry] = switch filter {
         case .all: model.searchHistory(search, audio: nil, failed: false)
         case .video: model.searchHistory(search, audio: false, failed: false)
         case .audio: model.searchHistory(search, audio: true, failed: false)
         case .failed: model.searchHistory(search, audio: nil, failed: true)
+        case .compressed: model.searchHistory(search, audio: false, failed: false).filter { $0.details?.compression != nil }
         }
         guard let project else { return all }
         return all.filter { project.contains($0.file) }
@@ -57,6 +59,10 @@ struct HistoryView: View {
                         Text("Downloaded").font(TypeStyle.title)
                         Text("Everything you’ve downloaded, newest first. Select one and press Space to preview it.").font(.callout).foregroundStyle(.secondary)
                             .lineLimit(2)
+                        if model.compressionSavedBytes > 0 {
+                            Label("Compressing your downloads has saved \(Fmt.bytes(model.compressionSavedBytes))", systemImage: "rectangle.compress.vertical")
+                                .font(.caption).foregroundStyle(Brand.good)
+                        }
                     }
                     Spacer(minLength: 12)
                 }
@@ -150,6 +156,13 @@ struct HistoryRow: View {
     var quickLook: () -> Void = {}
     var fileExists: Bool { record.file.map { FileManager.default.fileExists(atPath: $0.path) } ?? false }
     @State private var hover = false
+    /// "220 MB (was 587 MB)" once compressed.
+    var sizeText: String {
+        if let c = record.details?.compression, c.state == .done, let o = c.outputBytes {
+            return "\(Fmt.bytes(o)) (was \(Fmt.bytes(c.originalBytes ?? record.bytes)))"
+        }
+        return Fmt.bytes(record.bytes)
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -159,11 +172,15 @@ struct HistoryRow: View {
                 HStack(spacing: 6) {
                     Text(record.title).lineLimit(1)
                     if model.freshHistoryIDs.contains(record.id) { Chip("New", tint: Brand.dawn) }
+                    if let c = record.details?.compression {
+                        Chip(c.chip, systemImage: "rectangle.compress.vertical", tint: c.tint)
+                            .help(c.note ?? "Digby Video Compressor, \(c.setting)")
+                    }
                 }
                 HStack(spacing: 4) {
                     SourceLink(site: record.site, url: record.url)
                     Text("· " + [record.date.formatted(.relative(presentation: .named)), record.detail,
-                                 record.succeeded ? Fmt.bytes(record.bytes) : nil].compactMap { $0 }.joined(separator: " · "))
+                                 record.succeeded ? sizeText : nil].compactMap { $0 }.joined(separator: " · "))
                         .foregroundStyle(record.succeeded ? Color.secondary : Brand.warn).lineLimit(1)
                 }
                 .font(.caption)
@@ -174,6 +191,12 @@ struct HistoryRow: View {
                     Text("File moved or deleted").font(.caption).foregroundStyle(.tertiary).lineLimit(1).fixedSize()
                 }
                 if record.succeeded, let f = record.file, fileExists {
+                    if record.kind != .audioOnly, model.compressorInstalled, layout != .narrow {
+                        RoundIconButton("rectangle.compress.vertical",
+                                        help: "Compress: Digby Video Compressor starts on it straight away (\(model.compressAfter.summary.lowercased()))") {
+                            model.compressWithDigby(f, using: model.compressAfter)
+                        }
+                    }
                     Button("Open") { NSWorkspace.shared.open(f) }.buttonStyle(QuietButtonStyle(tint: .secondary))
                     switch layout {
                     case .wide: Button("Show in Finder") { model.reveal(f) }.buttonStyle(QuietButtonStyle(tint: .secondary))
@@ -206,7 +229,8 @@ struct HistoryRow: View {
                     Button("Copy Link") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(record.url.absoluteString, forType: .string) }
                     Button("Open Original Page") { NSWorkspace.shared.open(record.url) }
                     if record.succeeded, record.kind != .audioOnly, fileExists, let f = record.file, model.compressorInstalled {
-                        Button("Compress with Digby") { model.compressWithDigby(f) }
+                        Button("Compress Now") { model.compressWithDigby(f, using: model.compressAfter) }
+                        Button("Open in Digby Compressor") { model.compressWithDigby(f) }
                     }
                     Divider()
                     Button("Remove from History") { model.removeHistory(record) }

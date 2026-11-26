@@ -16,6 +16,7 @@ struct DetailsView: View {
                     original
                     chosen
                     result
+                    if let c = details.compression { compressed(c) }
                 }
                 .padding(24)
             }
@@ -133,6 +134,8 @@ struct DetailsView: View {
                         Button("Show in Finder") { model.reveal(f) }.buttonStyle(QuietButtonStyle())
                         Button("Open") { NSWorkspace.shared.open(f) }.buttonStyle(QuietButtonStyle(tint: .secondary))
                     }
+                } else if details.compression?.originalTrashed == true {
+                    InfoRow("Replaced by the smaller copy below. This download went to the Trash.", systemImage: "trash", tint: .secondary)
                 } else {
                     InfoRow("The file has been moved or deleted since.", systemImage: "questionmark.folder", tint: .secondary)
                 }
@@ -142,6 +145,66 @@ struct DetailsView: View {
             } else {
                 InfoRow("This download didn’t finish, so there’s no file.", systemImage: "xmark.circle", tint: .secondary)
             }
+        }
+    }
+
+    /// What Digby Video Compressor did with it.
+    @ViewBuilder func compressed(_ c: CompressionRecord) -> some View {
+        Card {
+            SectionLabel("Made smaller", systemImage: "rectangle.compress.vertical")
+            switch c.state {
+            case .sent:
+                InfoRow("Sent to Digby Video Compressor (\(c.setting)). It hasn’t reported back yet.", systemImage: "paperplane", tint: Brand.accent)
+            case .compressing:
+                InfoRow("Digby Video Compressor is making it smaller now (\(c.setting)).", systemImage: "hourglass", tint: Brand.accent)
+            case .skipped:
+                InfoRow("Kept as downloaded: \(c.note ?? "compressing wouldn’t have saved enough to be worth it")", systemImage: "equal.circle", tint: .secondary)
+            case .failed:
+                InfoRow("Couldn’t be compressed: \(c.note ?? "Digby Video Compressor reported a problem"). The download is untouched.", systemImage: "exclamationmark.triangle.fill", tint: Brand.warn)
+            case .cancelled:
+                InfoRow("Compression was cancelled. The download is untouched.", systemImage: "xmark.circle", tint: .secondary)
+            case .done:
+                if let o = c.originalBytes, let n = c.outputBytes {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(Fmt.bytes(o)).foregroundStyle(.secondary).strikethrough()
+                        Image(systemName: "arrow.right").foregroundStyle(.tertiary)
+                        Text(Fmt.bytes(n)).font(.title3.weight(.semibold))
+                        if let r = c.reduction { Chip("\(Int((r * 100).rounded())) % smaller", tint: Brand.good) }
+                    }
+                }
+                if let q = c.quality {
+                    InfoRow("Quality check: \(q)" + (c.vmaf.map { String(format: " (%.0f out of 100)", $0) } ?? "") + ". " + qualityWords(q),
+                            systemImage: "eye", tint: Brand.good)
+                }
+                Text(["Setting: \(c.setting)", c.format].compactMap { $0 }.joined(separator: " · ")).font(.callout).foregroundStyle(.secondary)
+                if let out = c.output {
+                    HStack {
+                        Text(out.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).font(.caption.monospaced()).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        if FileManager.default.fileExists(atPath: out.path) {
+                            Button("Show in Finder") { model.reveal(out) }.buttonStyle(QuietButtonStyle())
+                            Button("Open") { NSWorkspace.shared.open(out) }.buttonStyle(QuietButtonStyle(tint: .secondary))
+                        }
+                    }
+                }
+                if c.originalTrashed {
+                    InfoRow("The original download went to the Trash once the smaller copy was checked. You can still put it back from the Trash.", systemImage: "trash", tint: .secondary)
+                } else {
+                    InfoRow("The original download was kept" + (FileManager.default.fileExists(atPath: c.originalFile.path) ? " next to it." : ", but has since been moved or deleted.")
+                            + (c.note.map { " \($0)" } ?? ""), systemImage: "doc.on.doc", tint: .secondary)
+                }
+            }
+            Text("\(c.state == .done ? "Compressed" : "Updated") \(c.date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.tertiary)
+        }
+    }
+
+    func qualityWords(_ q: String) -> String {
+        switch q {
+        case "Excellent": "Looks the same as the download."
+        case "Very Good": "Differences are very hard to spot."
+        case "Good": "Small differences in fine detail."
+        default: "Some visible loss: fine when only the content matters."
         }
     }
 }

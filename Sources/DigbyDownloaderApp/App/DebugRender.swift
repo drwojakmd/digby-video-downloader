@@ -183,6 +183,13 @@ enum DebugRender {
                 $0.choices.subtitles = SubtitleChoice(mode: .burn, languages: ["en"]); $0.choices.subtitles.translateTo = "ja"; $0.overnight = true }),
             ("queue-overnight", { m.currentProjectID = nil; m.selectedProjectID = nil; m.section = .queue; m.leaves.first { $0.state == .waiting }?.overnight = true }),
             ("queue-details", { m.section = .queue; if let i = m.leaves.first(where: { $0.details != nil }) ?? m.leaves.first { m.expandedQueueIDs = [i.id] } }),
+            ("resume", { m.section = .history
+                m.lastSession = LastSessionReport(items: [
+                    LastSessionItem(id: "1", name: "Northern Lights over Tromsø", outcome: .finished),
+                    LastSessionItem(id: "2", name: "Aurora timelapse (4K)", outcome: .stopped, reason: "Was downloading", canResume: true),
+                    LastSessionItem(id: "3", name: "Lecture 4: Plasma physics", outcome: .stopped, reason: "Was waiting its turn", canResume: true),
+                    LastSessionItem(id: "4", name: "Live stream replay", outcome: .failed, reason: "The site needs you to sign in", canResume: true),
+                    LastSessionItem(id: "5", name: "Trailer", outcome: .cancelled)], noun: "download") }),
         ]
     }
 

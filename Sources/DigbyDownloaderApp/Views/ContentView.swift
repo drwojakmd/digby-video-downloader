@@ -34,7 +34,7 @@ struct DetailRoot: View {
     var body: some View {
         VStack(spacing: 0) {
             if let banner = model.engineBanner { EngineBanner(text: banner) }
-            if !model.resumeOffer.isEmpty { ResumeBanner() }
+            if let report = model.lastSession { ResumeBanner(report: report) }
             // The link bar: always there (except on the welcome screen, which has its own big field).
             if !(model.section == .download && model.drafts.isEmpty) {
                 LinkBar()
@@ -149,20 +149,72 @@ struct EngineFooter: View {
     }
 }
 
+/// After reopening: what the last session finished, what quitting stopped, what failed (and why), what was cancelled.
 struct ResumeBanner: View {
     @Environment(AppModel.self) private var model
+    var report: LastSessionReport
+    @State private var expanded = ProcessInfo.processInfo.environment["DIGBY_DL_RENDER"] != nil
     var body: some View {
-        let n = model.resumeOffer.count
-        HStack(spacing: 10) {
-            Image(systemName: "arrow.clockwise.circle").foregroundStyle(Brand.accent)
-            Text("\(n) download\(n == 1 ? "" : "s") didn’t finish last time.").font(.callout)
-            Spacer()
-            Button("Discard") { model.discardUnfinished() }.buttonStyle(QuietButtonStyle(tint: .secondary))
-            Button("Continue") { model.resumeUnfinished() }.buttonStyle(QuietButtonStyle())
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle").foregroundStyle(Brand.accent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(report.headline).font(.callout)
+                    Text(report.tally).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(expanded ? "Hide" : "Details") { withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() } }
+                    .buttonStyle(QuietButtonStyle(tint: .secondary))
+                Button("Dismiss") { model.discardUnfinished() }.buttonStyle(QuietButtonStyle(tint: .secondary))
+                    .help("Close this. Downloads not resumed are forgotten and what had arrived of them is deleted.")
+                if !report.resumable.isEmpty {
+                    Button("Resume All") { model.resumeUnfinished() }.buttonStyle(QuietButtonStyle())
+                }
+            }
+            if expanded {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(report.items) { row in Row(row: row) }
+                }
+                .padding(.leading, 26)
+            }
         }
         .padding(.horizontal, 18).padding(.vertical, 8)
         .background(Brand.accent.opacity(0.08))
         .overlay(alignment: .bottom) { Divider() }
+    }
+
+    struct Row: View {
+        @Environment(AppModel.self) private var model
+        var row: LastSessionItem
+        var body: some View {
+            HStack(spacing: 8) {
+                Image(systemName: symbol).foregroundStyle(tint).frame(width: 14)
+                Text(row.name).lineLimit(1).truncationMode(.middle)
+                if let r = row.reason { Text(r).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail) }
+                Spacer(minLength: 8)
+                if row.canResume {
+                    Button(row.outcome == .failed ? "Try Again" : "Resume") { model.resumeUnfinished([row.id]) }.buttonStyle(.borderless)
+                    Button("Remove") { model.removeUnfinished(row.id) }.buttonStyle(.borderless).foregroundStyle(.secondary)
+                }
+            }
+            .font(.caption)
+        }
+        var symbol: String {
+            switch row.outcome {
+            case .finished: "checkmark.circle"
+            case .stopped: "pause.circle"
+            case .failed: "exclamationmark.circle"
+            case .cancelled: "xmark.circle"
+            }
+        }
+        var tint: Color {
+            switch row.outcome {
+            case .finished: .green
+            case .stopped: Brand.accent
+            case .failed: .orange
+            case .cancelled: .secondary
+            }
+        }
     }
 }
 

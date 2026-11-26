@@ -48,6 +48,8 @@ public struct DownloadDetails: Codable, Sendable, Hashable, Identifiable {
     public var file: URL?
     public var bytes: Int64?
     public var completedAt: Date?
+    /// Made smaller by Digby Video Compressor afterwards (nil: never sent there). Older saved details lack it.
+    public var compression: CompressionRecord? = nil
 
     public static func make(catalogue c: FormatCatalogue, choices ch: Choices, plan p: DownloadPlan) -> DownloadDetails {
         let m = c.media
@@ -90,4 +92,51 @@ public struct DownloadDetails: Codable, Sendable, Hashable, Identifiable {
     public mutating func finish(_ o: DownloadOutcome) {
         verified = o.report.summary; file = o.file; bytes = o.bytes; completedAt = Date()
     }
+}
+
+/// What Digby Video Compressor did with a download sent to it, as it reported back.
+public struct CompressionRecord: Codable, Sendable, Hashable {
+    public enum State: String, Codable, Sendable { case sent, compressing, done, skipped, failed, cancelled }
+    public var state: State
+    public var setting: String                // "Balanced", "Fit 25 MB", "Compressor’s settings"
+    public var originalFile: URL              // the download as it was
+    public var output: URL?                   // the smaller file
+    public var originalBytes: Int64?
+    public var outputBytes: Int64?
+    public var format: String?                // "HEVC · 1920×1080"
+    public var quality: String?               // "Excellent"
+    public var vmaf: Double?
+    public var originalTrashed: Bool
+    public var note: String?
+    public var date: Date
+
+    public init(state: State, setting: String, originalFile: URL, output: URL? = nil, originalBytes: Int64? = nil, outputBytes: Int64? = nil,
+                format: String? = nil, quality: String? = nil, vmaf: Double? = nil, originalTrashed: Bool = false, note: String? = nil, date: Date = Date()) {
+        self.state = state; self.setting = setting; self.originalFile = originalFile; self.output = output
+        self.originalBytes = originalBytes; self.outputBytes = outputBytes; self.format = format; self.quality = quality
+        self.vmaf = vmaf; self.originalTrashed = originalTrashed; self.note = note; self.date = date
+    }
+
+    /// Bytes saved (done only).
+    public var savedBytes: Int64? {
+        guard state == .done, let o = originalBytes, let n = outputBytes else { return nil }
+        return max(0, o - n)
+    }
+    /// 0.62 for "62 % smaller".
+    public var reduction: Double? {
+        guard let s = savedBytes, let o = originalBytes, o > 0 else { return nil }
+        return Double(s) / Double(o)
+    }
+    /// Short status for a list row: "Compressed −62 %", "Compressing…".
+    public var chip: String {
+        switch state {
+        case .sent: return "Waiting for Compressor"
+        case .compressing: return "Compressing…"
+        case .done: return reduction.map { "Compressed −\(Int(($0 * 100).rounded())) %" } ?? "Compressed"
+        case .skipped: return "Kept as downloaded"
+        case .failed: return "Compression failed"
+        case .cancelled: return "Compression cancelled"
+        }
+    }
+    public var isFinal: Bool { ![.sent, .compressing].contains(state) }
 }

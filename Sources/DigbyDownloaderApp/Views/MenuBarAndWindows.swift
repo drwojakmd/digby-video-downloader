@@ -88,12 +88,11 @@ enum GlossaryWindow {
 struct AboutView: View {
     var body: some View {
         VStack(spacing: 0) {
-            ZStack {
-                Brand.skyGradient
-                LandfallView(progress: 1, color: .white, pointColor: Brand.dawnFixed).padding(.horizontal, 40).opacity(0.75)
-                DigbyLockup(size: 27).frame(maxHeight: .infinity, alignment: .top).padding(.top, 44)
+            VStack(spacing: 14) {
+                AppIconMark(size: 96)
+                DigbyLockup(size: 24, color: .primary)
             }
-            .frame(height: 190)
+            .padding(.top, 34).padding(.bottom, 6)
             VStack(spacing: 6) {
                 Text("Anything you find. Yours to keep.").foregroundStyle(.secondary)
                 Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0")")
