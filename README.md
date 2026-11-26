@@ -7,17 +7,16 @@ get in plain English, and download it at the quality you chose, or be told clear
 
 Part of the Digby family, with [Digby Video Compressor](https://github.com/digbyapps/digby-video-compressor).
 
+![Digby Video Downloader showing a video ready to download](Docs/Screens/ready-light.png)
+
 ## Install
 
-**[Download Digby Video Downloader](https://github.com/digbyapps/digby-video-downloader/releases/latest/download/Digby-Video-Downloader.dmg)** (free, about 5 MB) · [All releases](https://github.com/digbyapps/digby-video-downloader/releases)
+Digby Video Downloader is free and open source (MIT); the source code is in this repository.
+Get the latest version from the **[Releases page](https://github.com/digbyapps/digby-video-downloader/releases)**
+(about 5 MB). See also the [website](https://digbyapps.github.io/downloader/).
 
-1. Open the downloaded Digby Video Downloader disk image and drag **Digby Video Downloader** to **Applications**.
-2. The first time you open it, macOS says it can't check the app for malicious software, because the app is
-   signed locally rather than notarised by Apple. To open it anyway (once):
-   - **macOS 15 Sequoia and later:** open it once and click **Done**, then go to System Settings → Privacy & Security,
-     scroll down to "Digby Video Downloader was blocked…", click **Open Anyway** and confirm with your password.
-   - **macOS 14 Sonoma:** right-click the app → **Open** → **Open**.
-3. On first launch Digby sets up its download engines (about 150 MB, a minute or so). It does this once, by itself.
+Open the disk image from the release and drag **Digby Video Downloader** to **Applications**. On first launch Digby
+sets up its download engines (about 150 MB, a minute or so). It does this once, by itself.
 
 Requirements: a Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or later. You don't need Homebrew,
 Python, Xcode or the command line.
@@ -85,12 +84,12 @@ Design, architecture and test notes are in [Docs/](Docs).
 
 ## Known limitations
 
-- **Not notarised**, so the first launch needs the one-time "Open Anyway" step above. Notarisation needs a paid Apple Developer ID.
+- **Not notarised** yet (that needs a paid Apple Developer ID), so macOS asks for confirmation the first time you open it. The release notes explain the one-time step.
 - **DRM-protected media, paywalls and access controls are not bypassed.** Download only what you have the right to keep.
 - **Sites change.** Digby updates its engine automatically, but a brand-new site change can take a few days to be fixed upstream.
 - **Sites behind Cloudflare** (Rumble, sometimes Vimeo) may refuse the engine on VPNs; use Find the Video on the Page.
 
-## Licence
+## Licence and third-party software
 
 MIT © 2026 Digby. The download engines have their own licences (yt-dlp: Unlicense, with GPLv3+ components in its
 macOS build; FFmpeg: GPLv3+; Deno: MIT). Digby downloads them from their publishers; see
