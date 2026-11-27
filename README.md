@@ -5,15 +5,15 @@
 A native macOS app for downloading video and audio from thousands of websites. Paste a link, see exactly what you'll
 get in plain English, and download it at the quality you chose, or be told clearly why not.
 
-Part of the Digby family, with [Digby Video Compressor](https://github.com/digbyapps/digby-video-compressor).
+Part of the Digby family, with [Digby Video Compressor](https://github.com/drwojakmd/digby-video-compressor).
 
 ![Digby Video Downloader showing a video ready to download](Docs/Screens/ready-light.png)
 
 ## Install
 
 Digby Video Downloader is free and open source (MIT); the source code is in this repository.
-Get the latest version from the **[Releases page](https://github.com/digbyapps/digby-video-downloader/releases)**
-(about 5 MB). See also the [website](https://digbyapps.github.io/downloader/).
+Get the latest version from the **[Releases page](https://github.com/drwojakmd/digby-video-downloader/releases)**
+(about 5 MB). See also the [website](https://drwojakmd.github.io/downloader/).
 
 Open the disk image from the release and drag **Digby Video Downloader** to **Applications**. On first launch Digby
 sets up its download engines (about 150 MB, a minute or so). It does this once, by itself.
